@@ -57,22 +57,41 @@ apt-get upgrade -y
 apt-get remove -y apache2*
 
 echo ""
-echo "Installing Nginx, MySQL, and PHP..."
+echo "Installing build tools and git..."
+
+# Install build tools and git first
+apt-get install -y build-essential gcc git wget curl ca-certificates
+
+echo ""
+echo "Installing Nginx, MySQL/MariaDB, and PHP..."
 
 # Install nginx
 apt-get install -y nginx
 
-# Install MySQL
-echo "mysql-server mysql-server/root_password password root" | debconf-set-selections
-echo "mysql-server mysql-server/root_password_again password root" | debconf-set-selections
-apt-get install -y mysql-server mysql-client
+# Install MySQL/MariaDB
+if [ "$OS_DISTRO" = "Debian" ]; then
+	echo "Installing MariaDB (MySQL replacement for Debian)..."
+	apt-get install -y mariadb-server mariadb-client
+	MYSQL_SERVICE="mariadb"
+else
+	echo "mysql-server mysql-server/root_password password root" | debconf-set-selections
+	echo "mysql-server mysql-server/root_password_again password root" | debconf-set-selections
+	apt-get install -y mysql-server mysql-client
+	MYSQL_SERVICE="mysql"
+fi
 
-# Install PHP 8.1 and extensions
-echo "Installing PHP 8.1 and extensions..."
-apt-get install -y php8.1-fpm php8.1-cli php8.1-common php8.1-mysql php8.1-sqlite3 \
-	php8.1-curl php8.1-xml php8.1-zip php8.1-gd php8.1-mbstring php8.1-bcmath \
-	php8.1-intl php8.1-readline php8.1-opcache php8.1-imagick php8.1-imap \
-	php-pear php8.1-dev libcurl4-openssl-dev libpcre3-dev build-essential
+# Install PHP (8.1 or 8.2 depending on availability)
+echo "Installing PHP and extensions..."
+PHP_VERSION="8.1"
+if ! apt-cache search php${PHP_VERSION}-fpm | grep -q php${PHP_VERSION}-fpm; then
+	PHP_VERSION="8.2"
+	echo "PHP 8.1 not available, using PHP ${PHP_VERSION} instead..."
+fi
+
+apt-get install -y php${PHP_VERSION}-fpm php${PHP_VERSION}-cli php${PHP_VERSION}-common php${PHP_VERSION}-mysql php${PHP_VERSION}-sqlite3 \
+	php${PHP_VERSION}-curl php${PHP_VERSION}-xml php${PHP_VERSION}-zip php${PHP_VERSION}-gd php${PHP_VERSION}-mbstring php${PHP_VERSION}-bcmath \
+	php${PHP_VERSION}-intl php${PHP_VERSION}-readline php${PHP_VERSION}-opcache php${PHP_VERSION}-imagick php${PHP_VERSION}-imap \
+	php-pear php${PHP_VERSION}-dev libcurl4-openssl-dev libpcre3-dev
 
 # Install Brotli module for nginx
 echo ""
@@ -124,9 +143,9 @@ if [ ! -f "/usr/lib/nginx/modules/ngx_http_brotli_filter_module.so" ] && [ ! -f 
 fi
 
 # Stop services before configuration
-systemctl stop mysql 2>/dev/null || service mysql stop
+systemctl stop ${MYSQL_SERVICE:-mysql} 2>/dev/null || service ${MYSQL_SERVICE:-mysql} stop
 systemctl stop nginx 2>/dev/null || service nginx stop
-systemctl stop php8.1-fpm 2>/dev/null || service php8.1-fpm stop
+systemctl stop php${PHP_VERSION}-fpm 2>/dev/null || service php${PHP_VERSION}-fpm stop
 
 echo ""
 echo "Configuring MySQL for remote access..."
@@ -196,7 +215,7 @@ index index.php index.html index.htm;
     		fastcgi_index index.php;
     		fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
     		try_files \$uri =404;
-    		fastcgi_pass unix:/var/run/php/php8.1-fpm.sock;
+    		fastcgi_pass unix:/var/run/php/php${PHP_VERSION}-fpm.sock;
     		error_page 404 /404page.html; 
         }
  
