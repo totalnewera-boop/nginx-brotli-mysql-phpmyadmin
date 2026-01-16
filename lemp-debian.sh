@@ -294,8 +294,8 @@ END
 
 # Configure PHP-FPM
 # Create PHP-FPM config directory if it doesn't exist
-mkdir -p /etc/php/8.1/fpm/pool.d
-cat > /etc/php/8.1/fpm/pool.d/www.conf <<END
+mkdir -p /etc/php/${PHP_VERSION}/fpm/pool.d
+cat > /etc/php/${PHP_VERSION}/fpm/pool.d/www.conf <<END
 [www]
 user = www-data
 group = www-data
@@ -316,7 +316,7 @@ php_admin_value[post_max_size] = 32M
 END
 
 # Configure PHP
-PHP_INI_FILE="/etc/php/8.1/fpm/php.ini"
+PHP_INI_FILE="/etc/php/${PHP_VERSION}/fpm/php.ini"
 if [ -f "$PHP_INI_FILE" ]; then
 	sed -i 's/;cgi.fix_pathinfo=1/cgi.fix_pathinfo=0/g' "$PHP_INI_FILE"
 	sed -i 's/#cgi.fix_pathinfo=0/cgi.fix_pathinfo=0/g' "$PHP_INI_FILE"
