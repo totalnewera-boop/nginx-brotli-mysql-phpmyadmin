@@ -299,7 +299,7 @@ cat > /etc/php/${PHP_VERSION}/fpm/pool.d/www.conf <<END
 [www]
 user = www-data
 group = www-data
-listen = /var/run/php/php8.1-fpm.sock
+listen = /var/run/php/php${PHP_VERSION}-fpm.sock
 listen.owner = www-data
 listen.group = www-data
 listen.mode = 0660
@@ -337,9 +337,9 @@ if [ "$pma_install" != "n" ]; then
 	apt-get install -y phpmyadmin
 	
 	echo -n "Domain for PHPMyAdmin Web Interface? Example: pma.domain.com :"
-	read pma_url
+	read -r pma_url
 	if [ ! -z "$pma_url" ] && [ -n "$pma_url" ]; then
-		# Validate domain name (basic check - just ensure it's not empty)
+		# Basic validation - just check it's not empty and contains valid characters
 		DOMAIN_VALID=$(echo "$pma_url" | grep -E "^[a-zA-Z0-9][a-zA-Z0-9\.-]*[a-zA-Z0-9]$|^[a-zA-Z0-9]+$" || echo "")
 		if [ ! -z "$DOMAIN_VALID" ]; then
 			cat > "/etc/nginx/sites-available/${pma_url}.conf" <<'EOF'
@@ -388,10 +388,10 @@ echo ""
 echo "Starting services..."
 systemctl enable mysql
 systemctl enable nginx
-systemctl enable php8.1-fpm
+systemctl enable php${PHP_VERSION}-fpm
 
-systemctl start mysql
-systemctl start php8.1-fpm
+systemctl start ${MYSQL_SERVICE:-mysql}
+systemctl start php${PHP_VERSION}-fpm
 systemctl start nginx
 
 # Download setup-vhost script
