@@ -338,13 +338,12 @@ if [ "$pma_install" != "n" ]; then
 	
 	echo -n "Domain for PHPMyAdmin Web Interface? Example: pma.domain.com :"
 	read -r pma_url
-	if [ ! -z "$pma_url" ] && [ -n "$pma_url" ]; then
-		# Basic validation - just check it's not empty and contains valid characters
-		DOMAIN_VALID=$(echo "$pma_url" | grep -E "^[a-zA-Z0-9][a-zA-Z0-9\.-]*[a-zA-Z0-9]$|^[a-zA-Z0-9]+$" || echo "")
-		if [ ! -z "$DOMAIN_VALID" ]; then
-			cat > "/etc/nginx/sites-available/${pma_url}.conf" <<'EOF'
+	pma_url=$(echo "$pma_url" | tr -d '\n\r\t ')
+	if [ ! -z "$pma_url" ]; then
+		PMA_CONFIG_FILE="/etc/nginx/sites-available/${pma_url}.conf"
+		cat > "$PMA_CONFIG_FILE" <<'ENDOFCONFIG'
 server {
-    server_name PMA_URL;
+    server_name PMA_DOMAIN_PLACEHOLDER;
     root /usr/share/phpmyadmin;
     
     include php;
@@ -353,16 +352,15 @@ server {
     # allow 192.168.1.0/24;
     # deny all;
     
-    access_log  /var/log/nginx/PMA_URL-access.log;
-    error_log  /var/log/nginx/PMA_URL-error.log;
+    access_log  /var/log/nginx/PMA_DOMAIN_PLACEHOLDER-access.log;
+    error_log  /var/log/nginx/PMA_DOMAIN_PLACEHOLDER-error.log;
 }
-EOF
-			sed -i "s|PMA_URL|${pma_url}|g" "/etc/nginx/sites-available/${pma_url}.conf"
-			ln -sf "/etc/nginx/sites-available/${pma_url}.conf" "/etc/nginx/sites-enabled/${pma_url}.conf"
-			echo "PHPMyAdmin configured for: $pma_url"
-		else
-			echo "Warning: Invalid domain name. Skipping PHPMyAdmin configuration."
-		fi
+ENDOFCONFIG
+		sed -i "s|PMA_DOMAIN_PLACEHOLDER|${pma_url}|g" "$PMA_CONFIG_FILE"
+		ln -sf "$PMA_CONFIG_FILE" "/etc/nginx/sites-enabled/${pma_url}.conf"
+		echo "PHPMyAdmin configured for: $pma_url"
+	else
+		echo "Warning: Domain name is empty. Skipping PHPMyAdmin configuration."
 	fi
 else
 	echo "Skipping PHPMyAdmin Installation"
