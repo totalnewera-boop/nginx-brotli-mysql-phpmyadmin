@@ -315,8 +315,9 @@ if [ "$pma_install" != "n" ]; then
 	echo -n "Domain for PHPMyAdmin Web Interface? Example: pma.domain.com :"
 	read pma_url
 	if [ ! -z "$pma_url" ] && [ -n "$pma_url" ]; then
-		# Validate domain name (basic check)
-		if [[ "$pma_url" =~ ^[a-zA-Z0-9][a-zA-Z0-9\.-]*[a-zA-Z0-9]$ ]] || [[ "$pma_url" =~ ^[a-zA-Z0-9]+$ ]]; then
+		# Validate domain name (basic check - just ensure it's not empty)
+		DOMAIN_VALID=$(echo "$pma_url" | grep -E "^[a-zA-Z0-9][a-zA-Z0-9\.-]*[a-zA-Z0-9]$|^[a-zA-Z0-9]+$" || echo "")
+		if [ ! -z "$DOMAIN_VALID" ]; then
 			cat > "/etc/nginx/sites-available/${pma_url}.conf" <<'EOF'
 server {
     server_name PMA_URL;
