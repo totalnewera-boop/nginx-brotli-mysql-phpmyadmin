@@ -292,9 +292,14 @@ php_admin_value[post_max_size] = 32M
 END
 
 # Configure PHP
-sed -i 's/;cgi.fix_pathinfo=1/cgi.fix_pathinfo=0/g' /etc/php/8.1/fpm/php.ini
-sed -i 's/#cgi.fix_pathinfo=0/cgi.fix_pathinfo=0/g' /etc/php/8.1/fpm/php.ini
-sed -i 's/memory_limit = .*/memory_limit = 128M/' /etc/php/8.1/fpm/php.ini
+PHP_INI_FILE="/etc/php/8.1/fpm/php.ini"
+if [ -f "$PHP_INI_FILE" ]; then
+	sed -i 's/;cgi.fix_pathinfo=1/cgi.fix_pathinfo=0/g' "$PHP_INI_FILE"
+	sed -i 's/#cgi.fix_pathinfo=0/cgi.fix_pathinfo=0/g' "$PHP_INI_FILE"
+	sed -i 's/memory_limit = .*/memory_limit = 128M/' "$PHP_INI_FILE"
+else
+	echo "Warning: PHP.ini file not found at $PHP_INI_FILE"
+fi
 
 # Install phpMyAdmin
 echo ""
