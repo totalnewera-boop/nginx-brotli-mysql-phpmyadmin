@@ -32,11 +32,16 @@ END
 	wget -qO- http://www.dotdeb.org/dotdeb.gpg | apt-key add -
 fi
 
-# Add PHP repository for Ubuntu
+# Add PHP repository for Ubuntu/Debian
 if [ "$OS_DISTRO" = "Ubuntu" ]; then
 	echo "Adding PHP repository..."
 	apt-get install -y software-properties-common
 	add-apt-repository -y ppa:ondrej/php
+elif [ "$OS_DISTRO" = "Debian" ]; then
+	echo "Adding Sury PHP repository for Debian..."
+	apt-get install -y ca-certificates apt-transport-https lsb-release gnupg2
+	wget -qO- https://packages.sury.org/php/apt.gpg | apt-key add -
+	echo "deb https://packages.sury.org/php/ $(lsb_release -sc) main" | tee /etc/apt/sources.list.d/php.list
 fi
 
 # Add nginx with Brotli module repository (Ubuntu)
