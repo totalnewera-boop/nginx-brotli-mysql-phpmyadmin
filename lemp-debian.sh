@@ -314,8 +314,10 @@ if [ "$pma_install" != "n" ]; then
 	
 	echo -n "Domain for PHPMyAdmin Web Interface? Example: pma.domain.com :"
 	read pma_url
-	if [ ! -z "$pma_url" ]; then
-		cat > "/etc/nginx/sites-available/${pma_url}.conf" <<'EOF'
+	if [ ! -z "$pma_url" ] && [ -n "$pma_url" ]; then
+		# Validate domain name (basic check)
+		if [[ "$pma_url" =~ ^[a-zA-Z0-9][a-zA-Z0-9\.-]*[a-zA-Z0-9]$ ]] || [[ "$pma_url" =~ ^[a-zA-Z0-9]+$ ]]; then
+			cat > "/etc/nginx/sites-available/${pma_url}.conf" <<'EOF'
 server {
     server_name PMA_URL;
     root /usr/share/phpmyadmin;
@@ -330,9 +332,12 @@ server {
     error_log  /var/log/nginx/PMA_URL-error.log;
 }
 EOF
-		sed -i "s|PMA_URL|${pma_url}|g" "/etc/nginx/sites-available/${pma_url}.conf"
-		ln -sf "/etc/nginx/sites-available/${pma_url}.conf" "/etc/nginx/sites-enabled/${pma_url}.conf"
-		echo "PHPMyAdmin configured for: $pma_url"
+			sed -i "s|PMA_URL|${pma_url}|g" "/etc/nginx/sites-available/${pma_url}.conf"
+			ln -sf "/etc/nginx/sites-available/${pma_url}.conf" "/etc/nginx/sites-enabled/${pma_url}.conf"
+			echo "PHPMyAdmin configured for: $pma_url"
+		else
+			echo "Warning: Invalid domain name. Skipping PHPMyAdmin configuration."
+		fi
 	fi
 else
 	echo "Skipping PHPMyAdmin Installation"
