@@ -284,9 +284,9 @@ if [ "$pma_install" != "n" ]; then
 	echo -n "Domain for PHPMyAdmin Web Interface? Example: pma.domain.com :"
 	read pma_url
 	if [ ! -z "$pma_url" ]; then
-		cat > /etc/nginx/sites-available/$pma_url.conf <<END
+		cat > "/etc/nginx/sites-available/${pma_url}.conf" <<'EOF'
 server {
-    server_name $pma_url;
+    server_name PMA_URL;
     root /usr/share/phpmyadmin;
     
     include php;
@@ -295,11 +295,12 @@ server {
     # allow 192.168.1.0/24;
     # deny all;
     
-    access_log  /var/log/nginx/$pma_url-access.log;
-    error_log  /var/log/nginx/$pma_url-error.log;
+    access_log  /var/log/nginx/PMA_URL-access.log;
+    error_log  /var/log/nginx/PMA_URL-error.log;
 }
-END
-		ln -sf /etc/nginx/sites-available/$pma_url.conf /etc/nginx/sites-enabled/$pma_url.conf
+EOF
+		sed -i "s|PMA_URL|${pma_url}|g" "/etc/nginx/sites-available/${pma_url}.conf"
+		ln -sf "/etc/nginx/sites-available/${pma_url}.conf" "/etc/nginx/sites-enabled/${pma_url}.conf"
 		echo "PHPMyAdmin configured for: $pma_url"
 	fi
 else
