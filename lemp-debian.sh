@@ -82,18 +82,39 @@ fi
 
 # Build nginx with Brotli module (if not available as package)
 # Alternative: use dynamic module if available
-NGINX_VERSION=$(nginx -v 2>&1 | awk -F'/' '{print $2}')
 if [ ! -f "/usr/lib/nginx/modules/ngx_http_brotli_filter_module.so" ] && [ ! -f "/etc/nginx/modules-enabled/brotli.conf" ]; then
 	echo "Building nginx with Brotli support..."
 	cd /tmp
-	apt-get install -y libpcre3-dev zlib1g-dev libssl-dev
-	wget http://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz
-	tar xzf nginx-${NGINX_VERSION}.tar.gz
-	cd nginx-${NGINX_VERSION}
-	./configure --with-compat --add-dynamic-module=../ngx_brotli --prefix=/etc/nginx --sbin-path=/usr/sbin/nginx --modules-path=/usr/lib/nginx/modules
-	make modules
-	cp objs/ngx_http_brotli_filter_module.so /usr/lib/nginx/modules/
-	cp objs/ngx_http_brotli_static_module.so /usr/lib/nginx/modules/
+	# Install build tools and dependencies
+	apt-get install -y build-essential gcc libpcre3-dev zlib1g-dev libssl-dev
+	
+	# Get nginx version
+	if command -v nginx >/dev/null 2>&1; then
+		NGINX_VERSION=$(nginx -v 2>&1 | grep -oP '\d+\.\d+\.\d+')
+	else
+		NGINX_VERSION=$(dpkg -l | grep nginx | grep -oP '\d+\.\d+\.\d+' | head -1 || echo "1.22.1")
+	fi
+	
+	if [ -z "$NGINX_VERSION" ]; then
+		NGINX_VERSION="1.22.1"
+	fi
+	
+	mkdir -p /usr/lib/nginx/modules
+	wget -q http://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz -O nginx-${NGINX_VERSION}.tar.gz || true
+	if [ -f "nginx-${NGINX_VERSION}.tar.gz" ]; then
+		tar xzf nginx-${NGINX_VERSION}.tar.gz
+		cd nginx-${NGINX_VERSION}
+		./configure --with-compat --add-dynamic-module=../ngx_brotli --prefix=/etc/nginx --sbin-path=/usr/sbin/nginx --modules-path=/usr/lib/nginx/modules 2>/dev/null
+		make modules 2>/dev/null || true
+		if [ -f "objs/ngx_http_brotli_filter_module.so" ]; then
+			cp objs/ngx_http_brotli_filter_module.so /usr/lib/nginx/modules/
+		fi
+		if [ -f "objs/ngx_http_brotli_static_module.so" ]; then
+			cp objs/ngx_http_brotli_static_module.so /usr/lib/nginx/modules/
+		fi
+		cd /tmp
+		rm -rf nginx-${NGINX_VERSION} nginx-${NGINX_VERSION}.tar.gz*
+	fi
 	cd /
 fi
 
@@ -104,6 +125,9 @@ systemctl stop php8.1-fpm 2>/dev/null || service php8.1-fpm stop
 
 echo ""
 echo "Configuring MySQL for remote access..."
+
+# Create MySQL config directory if it doesn't exist
+mkdir -p /etc/mysql/mysql.conf.d
 
 # Configure MySQL - Enable remote access
 cat > /etc/mysql/mysql.conf.d/mysqld.cnf <<END
@@ -245,6 +269,8 @@ server {
 END
 
 # Configure PHP-FPM
+# Create PHP-FPM config directory if it doesn't exist
+mkdir -p /etc/php/8.1/fpm/pool.d
 cat > /etc/php/8.1/fpm/pool.d/www.conf <<END
 [www]
 user = www-data
