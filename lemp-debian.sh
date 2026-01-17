@@ -11,21 +11,29 @@ if [ "$(id -u)" != "0" ]; then
   exit 1
 fi
 
-echo "=== LEMP INSTALLER (DEBIAN 12 FINAL) ==="
+echo "=== LEMP AUTO INSTALLER (DEBIAN 12) ==="
 date
 
 # Генерация паролей
-DB_ROOT_PASS=$(openssl rand -base64 16)
+DB_ROOT_PASS=$(openssl rand -base64 18)
 DB_USER="lempuser"
-DB_PASS=$(openssl rand -base64 16)
+DB_PASS=$(openssl rand -base64 18)
 
+# Сохраняем креды
 cat > $CREDS <<EOF
-MariaDB Root Password: $DB_ROOT_PASS
+MariaDB ROOT Password: $DB_ROOT_PASS
 Database User: $DB_USER
 Database Password: $DB_PASS
 EOF
 
 chmod 600 $CREDS
+
+echo ""
+echo "==============================="
+echo " MariaDB ROOT PASSWORD:"
+echo " $DB_ROOT_PASS"
+echo "==============================="
+echo ""
 
 # Очистка старых реп
 rm -f /etc/apt/sources.list.d/dotdeb.list
@@ -36,16 +44,13 @@ apt update -y
 # Установка пакетов
 apt install -y nginx nginx-extras mariadb-server \
 php-fpm php-mysql php-cli php-curl php-zip php-mbstring php-xml php-gd \
-unzip curl ufw certbot python3-certbot-nginx
+unzip curl ufw certbot python3-certbot-nginx openssl
 
-# Определяем версию PHP-FPM
+# Определяем PHP-FPM сокет
 PHP_FPM_SOCK=$(ls /run/php/php*-fpm.sock | head -1)
 PHP_FPM_SERVICE=$(basename "$PHP_FPM_SOCK" | sed 's/.sock//')
 
-# Включение сервисов
 systemctl enable nginx mariadb "$PHP_FPM_SERVICE"
-
-# Запуск MariaDB
 systemctl start mariadb
 
 # Ждём БД
@@ -56,7 +61,7 @@ for i in {1..15}; do
   sleep 2
 done
 
-# Перевод root на парольную аутентификацию
+# Переключаем root на пароль
 mysql <<EOF
 ALTER USER 'root'@'localhost'
 IDENTIFIED WITH mysql_native_password
@@ -64,7 +69,7 @@ BY '$DB_ROOT_PASS';
 FLUSH PRIVILEGES;
 EOF
 
-# Создание пользователя
+# Создаём пользователя
 mysql -uroot -p"$DB_ROOT_PASS" <<EOF
 CREATE USER IF NOT EXISTS '$DB_USER'@'%' IDENTIFIED BY '$DB_PASS';
 GRANT ALL PRIVILEGES ON *.* TO '$DB_USER'@'%' WITH GRANT OPTION;
@@ -82,7 +87,7 @@ EOF
 
 systemctl restart mariadb
 
-# Проверяем наличие Brotli
+# Проверка Brotli
 BROTLI_MODULES=$(ls /usr/lib/nginx/modules | grep brotli || true)
 
 # NGINX конфиг
@@ -148,7 +153,7 @@ echo "phpmyadmin phpmyadmin/reconfigure-webserver multiselect none" | debconf-se
 apt install -y phpmyadmin
 ln -sf /usr/share/phpmyadmin /var/www/html/phpmyadmin
 
-# Firewall (3306 открыт)
+# Firewall
 ufw allow OpenSSH
 ufw allow 80
 ufw allow 443
@@ -168,8 +173,14 @@ Login: $DB_USER
 Password: $DB_PASS
 EOF
 
+echo ""
 echo "===================================="
-echo "INSTALL COMPLETED"
-echo "Credentials: $CREDS"
-echo "Log: $LOG"
+echo " INSTALL COMPLETED SUCCESSFULLY"
+echo "===================================="
+echo "ROOT DB PASSWORD:"
+echo " $DB_ROOT_PASS"
+echo ""
+echo "Credentials file: $CREDS"
+echo "Log file: $LOG"
+echo "phpMyAdmin: http://$IP/phpmyadmin"
 echo "===================================="
