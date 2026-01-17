@@ -39,14 +39,17 @@ rm -f /etc/apt/sources.list.d/php.list 2>/dev/null || true
 # Обновление пакетов (БЕЗ upgrade)
 apt update -y
 
-# Установка пакетов
+# Установка основных пакетов
 apt install -y nginx nginx-extras mariadb-server \
 php-fpm php-mysql php-cli php-curl php-zip php-mbstring php-xml php-gd \
-unzip curl ufw certbot python3-certbot-nginx
+unzip curl ufw certbot python3-certbot-nginx || true
 
-# Установка дополнительных PHP расширений (если доступны)
-apt install -y php-imagick 2>/dev/null || echo "php-imagick not available, skipping..."
-apt install -y php-imap 2>/dev/null || echo "php-imap not available, skipping..."
+# Установка дополнительных PHP расширений (опционально, если доступны)
+apt install -y php-imagick 2>/dev/null || echo "Note: php-imagick not available, skipping..."
+apt install -y php-imap 2>/dev/null || echo "Note: php-imap not available, skipping..."
+
+# Обновление списка пакетов после установки опциональных
+apt update -y 2>/dev/null || true
 
 # Включаем сервисы
 systemctl enable nginx mariadb php*-fpm
