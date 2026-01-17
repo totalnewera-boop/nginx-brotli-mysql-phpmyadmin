@@ -41,7 +41,6 @@ apt install -y nginx nginx-extras mariadb-server \
 php-fpm php-mysql php-cli php-curl php-zip php-mbstring php-xml php-gd \
 unzip curl ufw certbot python3-certbot-nginx openssl
 
-<<<<<<< HEAD
 # PHP-FPM - определяем socket и service
 PHP_FPM_SOCK=$(ls /run/php/php*-fpm.sock 2>/dev/null | head -1)
 if [ -z "$PHP_FPM_SOCK" ]; then
@@ -53,11 +52,6 @@ if [ -z "$PHP_FPM_SOCK" ]; then
   PHP_FPM_SOCK="/run/php/php-fpm.sock"
 fi
 PHP_FPM_SERVICE=$(basename "$PHP_FPM_SOCK" | sed 's/.sock//' | sed 's/php/php-fpm/')
-=======
-# PHP-FPM
-PHP_FPM_SOCK=$(ls /run/php/php*-fpm.sock | head -1)
-PHP_FPM_SERVICE=$(basename "$PHP_FPM_SOCK" | sed 's/.sock//')
->>>>>>> 96314f27a09c48f999278bd4b61d94ace38cf60d
 
 systemctl enable nginx mariadb "$PHP_FPM_SERVICE"
 systemctl start mariadb
