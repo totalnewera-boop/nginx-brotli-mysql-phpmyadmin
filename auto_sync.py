@@ -298,10 +298,50 @@ class GitAutoSyncHandler(FileSystemEventHandler):
         print("[Git] Отправляю изменения в GitHub...")
         # Определяем имя ветки для push
         branch_name = current_branch if current_branch else "main"
+        
+        # Проверяем, есть ли удаленные изменения
+        fetch_result = subprocess.run(
+            "git fetch origin",
+            cwd=self.repo_path,
+            capture_output=True,
+            text=True,
+            shell=True
+        )
+        
+        # Проверяем, разошлись ли ветки
+        status_result = subprocess.run(
+            "git status --porcelain -b",
+            cwd=self.repo_path,
+            capture_output=True,
+            text=True,
+            shell=True
+        )
+        
+        if "diverged" in status_result.stdout.lower() or "behind" in status_result.stdout.lower():
+            print("[Git] Локальная и удаленная ветки разошлись, объединяю изменения...")
+            # Пробуем pull с rebase для объединения
+            if not self.run_git_command(f"git pull --rebase origin {branch_name} 2>/dev/null || git pull origin {branch_name}"):
+                print("[Предупреждение] Не удалось объединить изменения автоматически")
+                print("[Подсказка] Выполните вручную: git pull --rebase origin main")
+        
+        # Пушим изменения
         if not self.run_git_command(f"git push -u origin {branch_name} 2>/dev/null || git push origin {branch_name}"):
-            print("[Ошибка] Не удалось отправить изменения в GitHub")
-            print("[Подсказка] Проверьте настройки git и подключение к интернету")
-            print("[Подсказка] Убедитесь, что удаленный репозиторий настроен: git remote add origin <url>")
+            error_msg = subprocess.run(
+                f"git push origin {branch_name}",
+                cwd=self.repo_path,
+                capture_output=True,
+                text=True,
+                shell=True
+            ).stderr.lower()
+            
+            if "non-fast-forward" in error_msg or "rejected" in error_msg:
+                print("[Ошибка] Удаленный репозиторий содержит изменения, которые отсутствуют локально")
+                print("[Подсказка] Выполните: git pull --rebase origin main")
+                print("[Подсказка] Затем синхронизация продолжится автоматически")
+            else:
+                print("[Ошибка] Не удалось отправить изменения в GitHub")
+                print("[Подсказка] Проверьте настройки git и подключение к интернету")
+                print("[Подсказка] Убедитесь, что удаленный репозиторий настроен: git remote add origin <url>")
             return
         
         print("[Успех] Изменения успешно отправлены в GitHub!\n")
