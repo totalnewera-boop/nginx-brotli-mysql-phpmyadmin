@@ -34,10 +34,6 @@ echo " $DB_ROOT_PASS"
 echo "==============================="
 echo ""
 
-# Очистка старых реп
-rm -f /etc/apt/sources.list.d/dotdeb.list
-rm -f /etc/apt/sources.list.d/php.list
-
 apt update -y
 
 # Установка пакетов
@@ -45,7 +41,7 @@ apt install -y nginx nginx-extras mariadb-server \
 php-fpm php-mysql php-cli php-curl php-zip php-mbstring php-xml php-gd \
 unzip curl ufw certbot python3-certbot-nginx openssl
 
-# Определяем PHP-FPM
+# PHP-FPM
 PHP_FPM_SOCK=$(ls /run/php/php*-fpm.sock | head -1)
 PHP_FPM_SERVICE=$(basename "$PHP_FPM_SOCK" | sed 's/.sock//')
 
@@ -53,22 +49,22 @@ systemctl enable nginx mariadb "$PHP_FPM_SERVICE"
 systemctl start mariadb
 
 # Ждём MariaDB
-for i in {1..15}; do
-  if mysql -e "SELECT 1" >/dev/null 2>&1; then
+for i in {1..20}; do
+  if sudo mysql -e "SELECT 1" >/dev/null 2>&1; then
     break
   fi
   sleep 2
 done
 
-# ВАЖНО: сначала подключаемся БЕЗ ПАРОЛЯ через socket
-mysql <<EOF
+# ПЕРЕКЛЮЧАЕМ root НА ПАРОЛЬ (через socket)
+sudo mysql <<EOF
 ALTER USER 'root'@'localhost'
 IDENTIFIED WITH mysql_native_password
 BY '$DB_ROOT_PASS';
 FLUSH PRIVILEGES;
 EOF
 
-# Теперь root работает по паролю
+# Создаём пользователя
 mysql -uroot -p"$DB_ROOT_PASS" <<EOF
 CREATE USER IF NOT EXISTS '$DB_USER'@'%' IDENTIFIED BY '$DB_PASS';
 GRANT ALL PRIVILEGES ON *.* TO '$DB_USER'@'%' WITH GRANT OPTION;
@@ -180,6 +176,5 @@ echo "ROOT DB PASSWORD:"
 echo " $DB_ROOT_PASS"
 echo ""
 echo "Credentials file: $CREDS"
-echo "Log file: $LOG"
 echo "phpMyAdmin: http://$IP/phpmyadmin"
 echo "===================================="
