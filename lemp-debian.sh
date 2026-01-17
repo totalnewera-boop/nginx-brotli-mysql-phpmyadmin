@@ -19,7 +19,6 @@ DB_ROOT_PASS=$(openssl rand -base64 18)
 DB_USER="lempuser"
 DB_PASS=$(openssl rand -base64 18)
 
-# Сохраняем креды
 cat > $CREDS <<EOF
 MariaDB ROOT Password: $DB_ROOT_PASS
 Database User: $DB_USER
@@ -46,14 +45,14 @@ apt install -y nginx nginx-extras mariadb-server \
 php-fpm php-mysql php-cli php-curl php-zip php-mbstring php-xml php-gd \
 unzip curl ufw certbot python3-certbot-nginx openssl
 
-# Определяем PHP-FPM сокет
+# Определяем PHP-FPM
 PHP_FPM_SOCK=$(ls /run/php/php*-fpm.sock | head -1)
 PHP_FPM_SERVICE=$(basename "$PHP_FPM_SOCK" | sed 's/.sock//')
 
 systemctl enable nginx mariadb "$PHP_FPM_SERVICE"
 systemctl start mariadb
 
-# Ждём БД
+# Ждём MariaDB
 for i in {1..15}; do
   if mysql -e "SELECT 1" >/dev/null 2>&1; then
     break
@@ -61,7 +60,7 @@ for i in {1..15}; do
   sleep 2
 done
 
-# Переключаем root на пароль
+# ВАЖНО: сначала подключаемся БЕЗ ПАРОЛЯ через socket
 mysql <<EOF
 ALTER USER 'root'@'localhost'
 IDENTIFIED WITH mysql_native_password
@@ -69,7 +68,7 @@ BY '$DB_ROOT_PASS';
 FLUSH PRIVILEGES;
 EOF
 
-# Создаём пользователя
+# Теперь root работает по паролю
 mysql -uroot -p"$DB_ROOT_PASS" <<EOF
 CREATE USER IF NOT EXISTS '$DB_USER'@'%' IDENTIFIED BY '$DB_PASS';
 GRANT ALL PRIVILEGES ON *.* TO '$DB_USER'@'%' WITH GRANT OPTION;
@@ -87,17 +86,17 @@ EOF
 
 systemctl restart mariadb
 
-# Проверка Brotli
-BROTLI_MODULES=$(ls /usr/lib/nginx/modules | grep brotli || true)
+# Brotli (если есть)
+BROTLI=$(ls /usr/lib/nginx/modules | grep brotli || true)
 
-# NGINX конфиг
+# NGINX
 cat > /etc/nginx/nginx.conf <<EOF
 user www-data;
 worker_processes auto;
 pid /run/nginx.pid;
 
-${BROTLI_MODULES:+load_module modules/ngx_http_brotli_filter_module.so;}
-${BROTLI_MODULES:+load_module modules/ngx_http_brotli_static_module.so;}
+${BROTLI:+load_module modules/ngx_http_brotli_filter_module.so;}
+${BROTLI:+load_module modules/ngx_http_brotli_static_module.so;}
 
 events { worker_connections 2048; }
 
@@ -109,9 +108,9 @@ http {
     keepalive_timeout 65;
 
     gzip on;
-    ${BROTLI_MODULES:+brotli on;}
-    ${BROTLI_MODULES:+brotli_comp_level 6;}
-    ${BROTLI_MODULES:+brotli_types text/plain text/css application/javascript application/json image/svg+xml;}
+    ${BROTLI:+brotli on;}
+    ${BROTLI:+brotli_comp_level 6;}
+    ${BROTLI:+brotli_types text/plain text/css application/javascript application/json image/svg+xml;}
 
     include /etc/nginx/conf.d/*.conf;
     include /etc/nginx/sites-enabled/*;
@@ -169,8 +168,8 @@ IP=$(hostname -I | awk '{print $1}')
 cat >> $CREDS <<EOF
 
 phpMyAdmin: http://$IP/phpmyadmin
-Login: $DB_USER
-Password: $DB_PASS
+Login: root
+Password: $DB_ROOT_PASS
 EOF
 
 echo ""
