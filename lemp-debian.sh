@@ -48,15 +48,26 @@ apt install -y nginx nginx-extras mariadb-server || true
 # Установка PHP и основных расширений (используем общие имена для совместимости)
 PACKAGES="php-mysql php-cli php-curl php-zip php-mbstring php-xml php-gd"
 for pkg in $PACKAGES; do
-    dpkg -l | grep -q "^ii.*$pkg " && echo "$pkg already installed" || apt install -y "$pkg" || echo "Warning: $pkg installation failed"
+    if dpkg -l | grep -q "^ii.*$pkg "; then
+        echo "$pkg already installed"
+    else
+        apt install -y "$pkg" || echo "Warning: $pkg installation failed"
+    fi
 done
 
-# Установка php-fpm (проверяем, установлен ли уже)
+# Установка php-fpm (проверяем, установлен ли уже любая версия)
+PHP_FPM_INSTALLED=false
 if dpkg -l | grep -q "^ii.*php.*fpm"; then
     echo "php-fpm already installed"
-else
-    # Пробуем установить php-fpm, если не установлен
-    apt install -y php-fpm 2>/dev/null || echo "Warning: php-fpm installation failed, but may already be installed"
+    PHP_FPM_INSTALLED=true
+elif systemctl list-unit-files | grep -q "php.*-fpm.service"; then
+    echo "php-fpm service found, skipping installation"
+    PHP_FPM_INSTALLED=true
+fi
+
+if [ "$PHP_FPM_INSTALLED" = "false" ]; then
+    # Пробуем установить php-fpm, если не установлен (но игнорируем ошибки)
+    apt install -y php-fpm 2>/dev/null && echo "php-fpm installed" || echo "Note: php-fpm may already be installed or unavailable"
 fi
 
 # Установка остальных пакетов
@@ -80,12 +91,29 @@ else
 fi
 
 # Запускаем MariaDB перед настройкой
-systemctl start mariadb || service mariadb start || true
-sleep 2
+echo "Starting MariaDB service..."
+systemctl start mariadb 2>/dev/null || service mariadb start 2>/dev/null || true
 
-# Настройка MariaDB
-mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '$DB_ROOT_PASS'; FLUSH PRIVILEGES;" 2>/dev/null || \
-mysql -uroot -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '$DB_ROOT_PASS'; FLUSH PRIVILEGES;"
+# Ждем пока MySQL/MariaDB запустится
+echo "Waiting for MariaDB to start..."
+for i in {1..10}; do
+    if mysql -e "SELECT 1" >/dev/null 2>&1; then
+        echo "MariaDB is ready"
+        break
+    fi
+    sleep 2
+done
+
+# Настройка MariaDB (пробуем разные варианты подключения)
+echo "Configuring MariaDB..."
+if mysql -e "SELECT 1" >/dev/null 2>&1; then
+    mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '$DB_ROOT_PASS'; FLUSH PRIVILEGES;"
+elif mysql -uroot -e "SELECT 1" >/dev/null 2>&1; then
+    mysql -uroot -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '$DB_ROOT_PASS'; FLUSH PRIVILEGES;"
+else
+    echo "Warning: Could not connect to MariaDB. It may need manual configuration."
+    echo "Run: mysql_secure_installation"
+fi
 mysql -uroot -p"$DB_ROOT_PASS" -e "CREATE USER '$DB_USER'@'%' IDENTIFIED BY '$DB_PASS';"
 mysql -uroot -p"$DB_ROOT_PASS" -e "GRANT ALL PRIVILEGES ON *.* TO '$DB_USER'@'%' WITH GRANT OPTION;"
 mysql -uroot -p"$DB_ROOT_PASS" -e "FLUSH PRIVILEGES;"
