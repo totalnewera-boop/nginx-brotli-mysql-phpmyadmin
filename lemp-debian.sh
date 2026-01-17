@@ -41,8 +41,12 @@ apt update -y
 
 # Установка пакетов
 apt install -y nginx nginx-extras mariadb-server \
-php-fpm php-mysql php-cli php-curl php-zip php-mbstring php-xml php-gd php-imagick php-imap \
+php-fpm php-mysql php-cli php-curl php-zip php-mbstring php-xml php-gd \
 unzip curl ufw certbot python3-certbot-nginx
+
+# Установка дополнительных PHP расширений (если доступны)
+apt install -y php-imagick 2>/dev/null || echo "php-imagick not available, skipping..."
+apt install -y php-imap 2>/dev/null || echo "php-imap not available, skipping..."
 
 # Включаем сервисы
 systemctl enable nginx mariadb php*-fpm
