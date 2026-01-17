@@ -134,7 +134,28 @@ class GitAutoSyncHandler(FileSystemEventHandler):
         """Синхронизировать изменения с GitHub."""
         print("\n[Синхронизация] Начинаю синхронизацию с GitHub...")
         
-<<<<<<< HEAD
+        # Проверяем наличие неразрешенных конфликтов merge
+        status_check = subprocess.run(
+            "git status --porcelain",
+            cwd=self.repo_path,
+            capture_output=True,
+            text=True,
+            shell=True
+        )
+        
+        merge_check = subprocess.run(
+            "git status",
+            cwd=self.repo_path,
+            capture_output=True,
+            text=True,
+            shell=True
+        )
+        
+        if "unmerged paths" in merge_check.stdout.lower() or "you have unmerged paths" in merge_check.stdout.lower():
+            print("[Git] Обнаружены неразрешенные конфликты merge, отменяю merge...")
+            self.run_git_command("git merge --abort", check=False)
+            print("[Git] Merge отменен, продолжаю синхронизацию...")
+        
         # Проверяем состояние репозитория
         print("[Git] Проверяю состояние репозитория...")
         
@@ -163,7 +184,10 @@ class GitAutoSyncHandler(FileSystemEventHandler):
                         if not content or len(content) < 7 or not all(c in '0123456789abcdef' for c in content.lower()):
                             main_ref.unlink()
                 except Exception:
-                    main_ref.unlink(missing_ok=True)
+                    try:
+                        main_ref.unlink()
+                    except Exception:
+                        pass
             
             # Исправляем HEAD напрямую через файловую систему
             head_file = self.repo_path / ".git" / "HEAD"
@@ -172,17 +196,6 @@ class GitAutoSyncHandler(FileSystemEventHandler):
                 print("[Git] HEAD исправлен напрямую")
             except Exception as e:
                 print(f"[Ошибка] Не удалось записать HEAD: {e}")
-            
-            # Проверяем, что HEAD теперь корректный
-            head_check2 = subprocess.run(
-                "git symbolic-ref HEAD",
-                cwd=self.repo_path,
-                capture_output=True,
-                text=True,
-                shell=True
-            )
-            if head_check2.returncode != 0:
-                print("[Предупреждение] HEAD все еще может быть поврежден, но продолжаю...")
         
         # Проверяем, есть ли коммиты
         log_result = subprocess.run(
@@ -210,9 +223,6 @@ class GitAutoSyncHandler(FileSystemEventHandler):
         if not has_commits:
             print("[Git] Репозиторий новый, инициализирую ветку main...")
             self.run_git_command("git checkout -b main 2>/dev/null || git branch -M main 2>/dev/null || true", check=False)
-            
-=======
->>>>>>> 96314f27a09c48f999278bd4b61d94ace38cf60d
         # Проверяем статус репозитория
         print("[Git] Проверяю статус...")
         self.run_git_command("git status", check=False)
@@ -241,7 +251,6 @@ class GitAutoSyncHandler(FileSystemEventHandler):
         commit_message = f"Auto-sync: обновление от {timestamp}"
         print(f"[Git] Создаю коммит: {commit_message}")
         
-<<<<<<< HEAD
         # Если это первый коммит или HEAD сломан, исправляем HEAD
         if not has_commits:
             print("[Git] Создаю первый коммит...")
@@ -370,17 +379,6 @@ class GitAutoSyncHandler(FileSystemEventHandler):
                 print("[Ошибка] Не удалось отправить изменения в GitHub")
                 print("[Подсказка] Проверьте настройки git и подключение к интернету")
                 print("[Подсказка] Убедитесь, что удаленный репозиторий настроен: git remote add origin <url>")
-=======
-        if not self.run_git_command(f'git commit -m "{commit_message}"'):
-            print("[Ошибка] Не удалось создать коммит")
-            return
-        
-        # Пушим в GitHub
-        print("[Git] Отправляю изменения в GitHub...")
-        if not self.run_git_command("git push origin main"):
-            print("[Ошибка] Не удалось отправить изменения в GitHub")
-            print("[Подсказка] Проверьте настройки git и подключение к интернету")
->>>>>>> 96314f27a09c48f999278bd4b61d94ace38cf60d
             return
         
         print("[Успех] Изменения успешно отправлены в GitHub!\n")
