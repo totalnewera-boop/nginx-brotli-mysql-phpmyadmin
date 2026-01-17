@@ -39,17 +39,25 @@ rm -f /etc/apt/sources.list.d/php.list 2>/dev/null || true
 # Обновление пакетов (БЕЗ upgrade)
 apt update -y
 
-# Установка основных пакетов
-apt install -y nginx nginx-extras mariadb-server \
-php-fpm php-mysql php-cli php-curl php-zip php-mbstring php-xml php-gd \
-unzip curl ufw certbot python3-certbot-nginx || true
+# Установка основных пакетов (с обработкой конфликтов версий)
+echo "Installing core packages..."
+
+# Установка nginx и mariadb
+apt install -y nginx nginx-extras mariadb-server || true
+
+# Установка PHP и основных расширений (используем общие имена для совместимости)
+PACKAGES="php-fpm php-mysql php-cli php-curl php-zip php-mbstring php-xml php-gd"
+for pkg in $PACKAGES; do
+    dpkg -l | grep -q "^ii.*$pkg " && echo "$pkg already installed" || apt install -y "$pkg" || echo "Warning: $pkg installation failed"
+done
+
+# Установка остальных пакетов
+apt install -y unzip curl ufw certbot python3-certbot-nginx || true
 
 # Установка дополнительных PHP расширений (опционально, если доступны)
-apt install -y php-imagick 2>/dev/null || echo "Note: php-imagick not available, skipping..."
-apt install -y php-imap 2>/dev/null || echo "Note: php-imap not available, skipping..."
-
-# Обновление списка пакетов после установки опциональных
-apt update -y 2>/dev/null || true
+for pkg in php-imagick php-imap; do
+    apt install -y "$pkg" 2>/dev/null && echo "Installed $pkg" || echo "Note: $pkg not available, skipping..."
+done
 
 # Включаем сервисы
 systemctl enable nginx mariadb php*-fpm
