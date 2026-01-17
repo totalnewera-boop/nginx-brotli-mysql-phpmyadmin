@@ -11,7 +11,7 @@ if [ "$(id -u)" != "0" ]; then
   exit 1
 fi
 
-echo "=== LEMP INSTALLER (DEBIAN 12 FIXED) ==="
+echo "=== LEMP INSTALLER (DEBIAN 12 FINAL) ==="
 date
 
 # Генерация паролей
@@ -38,8 +38,12 @@ apt install -y nginx nginx-extras mariadb-server \
 php-fpm php-mysql php-cli php-curl php-zip php-mbstring php-xml php-gd \
 unzip curl ufw certbot python3-certbot-nginx
 
+# Определяем версию PHP-FPM
+PHP_FPM_SOCK=$(ls /run/php/php*-fpm.sock | head -1)
+PHP_FPM_SERVICE=$(basename "$PHP_FPM_SOCK" | sed 's/.sock//')
+
 # Включение сервисов
-systemctl enable nginx mariadb php8.2-fpm
+systemctl enable nginx mariadb "$PHP_FPM_SERVICE"
 
 # Запуск MariaDB
 systemctl start mariadb
@@ -52,11 +56,20 @@ for i in {1..15}; do
   sleep 2
 done
 
-# Настройка MariaDB
-mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '$DB_ROOT_PASS'; FLUSH PRIVILEGES;"
-mysql -uroot -p"$DB_ROOT_PASS" -e "CREATE USER '$DB_USER'@'%' IDENTIFIED BY '$DB_PASS';"
-mysql -uroot -p"$DB_ROOT_PASS" -e "GRANT ALL PRIVILEGES ON *.* TO '$DB_USER'@'%' WITH GRANT OPTION;"
-mysql -uroot -p"$DB_ROOT_PASS" -e "FLUSH PRIVILEGES;"
+# Перевод root на парольную аутентификацию
+mysql <<EOF
+ALTER USER 'root'@'localhost'
+IDENTIFIED WITH mysql_native_password
+BY '$DB_ROOT_PASS';
+FLUSH PRIVILEGES;
+EOF
+
+# Создание пользователя
+mysql -uroot -p"$DB_ROOT_PASS" <<EOF
+CREATE USER IF NOT EXISTS '$DB_USER'@'%' IDENTIFIED BY '$DB_PASS';
+GRANT ALL PRIVILEGES ON *.* TO '$DB_USER'@'%' WITH GRANT OPTION;
+FLUSH PRIVILEGES;
+EOF
 
 # Открытый MySQL
 cat > /etc/mysql/mariadb.conf.d/50-server.cnf <<EOF
@@ -69,14 +82,17 @@ EOF
 
 systemctl restart mariadb
 
-# NGINX + Brotli
-cat > /etc/nginx/nginx.conf <<'EOF'
+# Проверяем наличие Brotli
+BROTLI_MODULES=$(ls /usr/lib/nginx/modules | grep brotli || true)
+
+# NGINX конфиг
+cat > /etc/nginx/nginx.conf <<EOF
 user www-data;
 worker_processes auto;
 pid /run/nginx.pid;
 
-load_module modules/ngx_http_brotli_filter_module.so;
-load_module modules/ngx_http_brotli_static_module.so;
+${BROTLI_MODULES:+load_module modules/ngx_http_brotli_filter_module.so;}
+${BROTLI_MODULES:+load_module modules/ngx_http_brotli_static_module.so;}
 
 events { worker_connections 2048; }
 
@@ -88,9 +104,9 @@ http {
     keepalive_timeout 65;
 
     gzip on;
-    brotli on;
-    brotli_comp_level 6;
-    brotli_types text/plain text/css application/javascript application/json image/svg+xml;
+    ${BROTLI_MODULES:+brotli on;}
+    ${BROTLI_MODULES:+brotli_comp_level 6;}
+    ${BROTLI_MODULES:+brotli_types text/plain text/css application/javascript application/json image/svg+xml;}
 
     include /etc/nginx/conf.d/*.conf;
     include /etc/nginx/sites-enabled/*;
@@ -98,20 +114,20 @@ http {
 EOF
 
 # Сайт
-cat > /etc/nginx/sites-available/default <<'EOF'
+cat > /etc/nginx/sites-available/default <<EOF
 server {
     listen 80 default_server;
     root /var/www/html;
     index index.php index.html;
 
     location / {
-        try_files $uri $uri/ /index.php?$query_string;
+        try_files \$uri \$uri/ /index.php?\$query_string;
     }
 
-    location ~ \.php$ {
+    location ~ \.php\$ {
         include fastcgi_params;
-        fastcgi_pass unix:/run/php/php8.2-fpm.sock;
-        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_pass unix:$PHP_FPM_SOCK;
+        fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
     }
 }
 EOF
@@ -132,7 +148,7 @@ echo "phpmyadmin phpmyadmin/reconfigure-webserver multiselect none" | debconf-se
 apt install -y phpmyadmin
 ln -sf /usr/share/phpmyadmin /var/www/html/phpmyadmin
 
-# Firewall (3306 открыт для всех)
+# Firewall (3306 открыт)
 ufw allow OpenSSH
 ufw allow 80
 ufw allow 443
@@ -140,7 +156,7 @@ ufw allow 3306
 ufw --force enable
 
 # Перезапуск
-systemctl restart php8.2-fpm
+systemctl restart "$PHP_FPM_SERVICE"
 systemctl restart nginx
 
 IP=$(hostname -I | awk '{print $1}')
