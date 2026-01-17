@@ -50,14 +50,14 @@ systemctl start mariadb
 
 # Ждём MariaDB
 for i in {1..20}; do
-  if sudo mysql -e "SELECT 1" >/dev/null 2>&1; then
+  if mysql -e "SELECT 1" >/dev/null 2>&1; then
     break
   fi
   sleep 2
 done
 
-# ПЕРЕКЛЮЧАЕМ root НА ПАРОЛЬ (через socket)
-sudo mysql <<EOF
+# Переключаем root на пароль (через socket)
+mysql <<EOF
 ALTER USER 'root'@'localhost'
 IDENTIFIED WITH mysql_native_password
 BY '$DB_ROOT_PASS';
