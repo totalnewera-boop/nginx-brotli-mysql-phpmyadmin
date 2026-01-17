@@ -60,7 +60,16 @@ for pkg in php-imagick php-imap; do
 done
 
 # Включаем сервисы
-systemctl enable nginx mariadb php*-fpm
+systemctl enable nginx mariadb
+
+# Включаем PHP-FPM сервис (определяем версию автоматически)
+PHP_FPM_SERVICE=$(systemctl list-unit-files | grep -oP 'php\d+\.\d+-fpm\.service' | head -1 || echo "")
+if [ ! -z "$PHP_FPM_SERVICE" ]; then
+    systemctl enable "$PHP_FPM_SERVICE" 2>/dev/null || true
+else
+    # Попытка найти любой php-fpm сервис
+    systemctl enable php*-fpm 2>/dev/null || systemctl enable php-fpm 2>/dev/null || true
+fi
 
 # Настройка MariaDB
 mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '$DB_ROOT_PASS'; FLUSH PRIVILEGES;"
