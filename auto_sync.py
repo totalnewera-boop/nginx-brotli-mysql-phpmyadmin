@@ -319,10 +319,34 @@ class GitAutoSyncHandler(FileSystemEventHandler):
         
         if "diverged" in status_result.stdout.lower() or "behind" in status_result.stdout.lower():
             print("[Git] Локальная и удаленная ветки разошлись, объединяю изменения...")
-            # Пробуем pull с rebase для объединения
-            if not self.run_git_command(f"git pull --rebase origin {branch_name} 2>/dev/null || git pull origin {branch_name}"):
-                print("[Предупреждение] Не удалось объединить изменения автоматически")
-                print("[Подсказка] Выполните вручную: git pull --rebase origin main")
+            # Пробуем pull с allow-unrelated-histories для объединения несвязанных историй
+            pull_result = subprocess.run(
+                f"git pull --allow-unrelated-histories origin {branch_name}",
+                cwd=self.repo_path,
+                capture_output=True,
+                text=True,
+                shell=True
+            )
+            
+            if pull_result.returncode != 0:
+                # Если pull не сработал, пробуем rebase
+                rebase_result = subprocess.run(
+                    f"git pull --rebase --allow-unrelated-histories origin {branch_name}",
+                    cwd=self.repo_path,
+                    capture_output=True,
+                    text=True,
+                    shell=True
+                )
+                
+                if rebase_result.returncode != 0:
+                    error_msg = rebase_result.stderr.lower()
+                    if "unrelated histories" in error_msg:
+                        print("[Предупреждение] Истории репозиториев не связаны")
+                        print("[Подсказка] Выполните вручную: git pull --allow-unrelated-histories origin main")
+                    else:
+                        print("[Предупреждение] Не удалось объединить изменения автоматически")
+                        print(f"[Ошибка] {rebase_result.stderr.strip()}")
+                    # Продолжаем попытку push - может быть это первый раз
         
         # Пушим изменения
         if not self.run_git_command(f"git push -u origin {branch_name} 2>/dev/null || git push origin {branch_name}"):
