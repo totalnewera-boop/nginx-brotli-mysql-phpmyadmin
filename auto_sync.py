@@ -134,6 +134,7 @@ class GitAutoSyncHandler(FileSystemEventHandler):
         """Синхронизировать изменения с GitHub."""
         print("\n[Синхронизация] Начинаю синхронизацию с GitHub...")
         
+<<<<<<< HEAD
         # Проверяем состояние репозитория
         print("[Git] Проверяю состояние репозитория...")
         
@@ -210,6 +211,8 @@ class GitAutoSyncHandler(FileSystemEventHandler):
             print("[Git] Репозиторий новый, инициализирую ветку main...")
             self.run_git_command("git checkout -b main 2>/dev/null || git branch -M main 2>/dev/null || true", check=False)
             
+=======
+>>>>>>> 96314f27a09c48f999278bd4b61d94ace38cf60d
         # Проверяем статус репозитория
         print("[Git] Проверяю статус...")
         self.run_git_command("git status", check=False)
@@ -238,6 +241,7 @@ class GitAutoSyncHandler(FileSystemEventHandler):
         commit_message = f"Auto-sync: обновление от {timestamp}"
         print(f"[Git] Создаю коммит: {commit_message}")
         
+<<<<<<< HEAD
         # Если это первый коммит или HEAD сломан, исправляем HEAD
         if not has_commits:
             print("[Git] Создаю первый коммит...")
@@ -366,6 +370,17 @@ class GitAutoSyncHandler(FileSystemEventHandler):
                 print("[Ошибка] Не удалось отправить изменения в GitHub")
                 print("[Подсказка] Проверьте настройки git и подключение к интернету")
                 print("[Подсказка] Убедитесь, что удаленный репозиторий настроен: git remote add origin <url>")
+=======
+        if not self.run_git_command(f'git commit -m "{commit_message}"'):
+            print("[Ошибка] Не удалось создать коммит")
+            return
+        
+        # Пушим в GitHub
+        print("[Git] Отправляю изменения в GitHub...")
+        if not self.run_git_command("git push origin main"):
+            print("[Ошибка] Не удалось отправить изменения в GitHub")
+            print("[Подсказка] Проверьте настройки git и подключение к интернету")
+>>>>>>> 96314f27a09c48f999278bd4b61d94ace38cf60d
             return
         
         print("[Успех] Изменения успешно отправлены в GitHub!\n")
