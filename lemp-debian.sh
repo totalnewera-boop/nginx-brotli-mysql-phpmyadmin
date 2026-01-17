@@ -49,27 +49,55 @@ systemctl enable nginx mariadb "$PHP_FPM_SERVICE"
 systemctl start mariadb
 
 # Ждём MariaDB
+echo "Waiting for MariaDB to start..."
 for i in {1..20}; do
-  if mysql -e "SELECT 1" >/dev/null 2>&1; then
+  if mysql -e "SELECT 1" >/dev/null 2>&1 || mysql -uroot -e "SELECT 1" >/dev/null 2>&1; then
+    echo "MariaDB is ready"
     break
   fi
   sleep 2
 done
 
-# Переключаем root на пароль (через socket)
-mysql <<EOF
+# Переключаем root на пароль (пробуем разные способы подключения)
+echo "Configuring MariaDB root password..."
+if mysql -e "SELECT 1" >/dev/null 2>&1; then
+  # Подключение без пароля работает
+  mysql <<EOF
 ALTER USER 'root'@'localhost'
 IDENTIFIED WITH mysql_native_password
 BY '$DB_ROOT_PASS';
 FLUSH PRIVILEGES;
 EOF
+elif mysql -uroot -e "SELECT 1" >/dev/null 2>&1; then
+  # Подключение с -uroot работает
+  mysql -uroot <<EOF
+ALTER USER 'root'@'localhost'
+IDENTIFIED WITH mysql_native_password
+BY '$DB_ROOT_PASS';
+FLUSH PRIVILEGES;
+EOF
+else
+  # Пароль уже установлен или нужна другая аутентификация
+  echo "Warning: MariaDB root already has a password or needs manual configuration"
+  echo "Root password was set to: $DB_ROOT_PASS"
+  echo "You may need to set it manually with: mysql_secure_installation"
+fi
 
-# Создаём пользователя
-mysql -uroot -p"$DB_ROOT_PASS" <<EOF
+# Создаём пользователя (пробуем с новым паролем)
+echo "Creating database user..."
+if mysql -uroot -p"$DB_ROOT_PASS" -e "SELECT 1" >/dev/null 2>&1; then
+  mysql -uroot -p"$DB_ROOT_PASS" <<EOF
 CREATE USER IF NOT EXISTS '$DB_USER'@'%' IDENTIFIED BY '$DB_PASS';
 GRANT ALL PRIVILEGES ON *.* TO '$DB_USER'@'%' WITH GRANT OPTION;
 FLUSH PRIVILEGES;
 EOF
+  echo "Database user created successfully"
+else
+  echo "Warning: Could not create database user. You may need to do it manually:"
+  echo "mysql -uroot -p"
+  echo "CREATE USER '$DB_USER'@'%' IDENTIFIED BY '$DB_PASS';"
+  echo "GRANT ALL PRIVILEGES ON *.* TO '$DB_USER'@'%' WITH GRANT OPTION;"
+fi
 
 # Открытый MySQL
 cat > /etc/mysql/mariadb.conf.d/50-server.cnf <<EOF
