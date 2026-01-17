@@ -106,17 +106,32 @@ done
 
 # Настройка MariaDB (пробуем разные варианты подключения)
 echo "Configuring MariaDB..."
+MYSQL_CONNECTED=false
+
 if mysql -e "SELECT 1" >/dev/null 2>&1; then
+    echo "Connected to MariaDB as root (no password)"
     mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '$DB_ROOT_PASS'; FLUSH PRIVILEGES;"
+    MYSQL_CONNECTED=true
 elif mysql -uroot -e "SELECT 1" >/dev/null 2>&1; then
+    echo "Connected to MariaDB as root"
     mysql -uroot -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '$DB_ROOT_PASS'; FLUSH PRIVILEGES;"
+    MYSQL_CONNECTED=true
+fi
+
+if [ "$MYSQL_CONNECTED" = "true" ]; then
+    echo "Creating database user..."
+    mysql -uroot -p"$DB_ROOT_PASS" -e "CREATE USER IF NOT EXISTS '$DB_USER'@'%' IDENTIFIED BY '$DB_PASS';" 2>/dev/null || \
+    mysql -uroot -p"$DB_ROOT_PASS" -e "CREATE USER '$DB_USER'@'%' IDENTIFIED BY '$DB_PASS';"
+    mysql -uroot -p"$DB_ROOT_PASS" -e "GRANT ALL PRIVILEGES ON *.* TO '$DB_USER'@'%' WITH GRANT OPTION;" 2>/dev/null
+    mysql -uroot -p"$DB_ROOT_PASS" -e "FLUSH PRIVILEGES;" 2>/dev/null
+    echo "MariaDB configured successfully"
 else
     echo "Warning: Could not connect to MariaDB. It may need manual configuration."
-    echo "Run: mysql_secure_installation"
+    echo "Please run manually:"
+    echo "  mysql_secure_installation"
+    echo "  mysql -uroot -p"
+    echo "Then create user: CREATE USER '$DB_USER'@'%' IDENTIFIED BY '$DB_PASS';"
 fi
-mysql -uroot -p"$DB_ROOT_PASS" -e "CREATE USER '$DB_USER'@'%' IDENTIFIED BY '$DB_PASS';"
-mysql -uroot -p"$DB_ROOT_PASS" -e "GRANT ALL PRIVILEGES ON *.* TO '$DB_USER'@'%' WITH GRANT OPTION;"
-mysql -uroot -p"$DB_ROOT_PASS" -e "FLUSH PRIVILEGES;"
 
 # Открытый доступ MySQL для ВСЕХ
 mkdir -p /etc/mysql/mariadb.conf.d
