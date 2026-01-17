@@ -153,7 +153,6 @@ EOF
 cat > /etc/nginx/sites-available/default <<EOF
 server {
     listen 80 default_server;
-<<<<<<< HEAD
     listen [::]:80 default_server;
     server_name _;
     root /var/www/html;
@@ -169,10 +168,6 @@ server {
         log_not_found off;
         access_log off;
     }
-=======
-    root /var/www/html;
-    index index.php index.html;
->>>>>>> 96314f27a09c48f999278bd4b61d94ace38cf60d
 
     location / {
         try_files \$uri \$uri/ /index.php?\$query_string;
@@ -182,7 +177,6 @@ server {
         include fastcgi_params;
         fastcgi_pass unix:$PHP_FPM_SOCK;
         fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
-<<<<<<< HEAD
         fastcgi_intercept_errors on;
         fastcgi_index index.php;
         try_files \$uri =404;
@@ -196,9 +190,6 @@ server {
 
     access_log /var/log/nginx/default-access.log;
     error_log /var/log/nginx/default-error.log;
-=======
-    }
->>>>>>> 96314f27a09c48f999278bd4b61d94ace38cf60d
 }
 EOF
 
