@@ -46,10 +46,18 @@ echo "Installing core packages..."
 apt install -y nginx nginx-extras mariadb-server || true
 
 # Установка PHP и основных расширений (используем общие имена для совместимости)
-PACKAGES="php-fpm php-mysql php-cli php-curl php-zip php-mbstring php-xml php-gd"
+PACKAGES="php-mysql php-cli php-curl php-zip php-mbstring php-xml php-gd"
 for pkg in $PACKAGES; do
     dpkg -l | grep -q "^ii.*$pkg " && echo "$pkg already installed" || apt install -y "$pkg" || echo "Warning: $pkg installation failed"
 done
+
+# Установка php-fpm (проверяем, установлен ли уже)
+if dpkg -l | grep -q "^ii.*php.*fpm"; then
+    echo "php-fpm already installed"
+else
+    # Пробуем установить php-fpm, если не установлен
+    apt install -y php-fpm 2>/dev/null || echo "Warning: php-fpm installation failed, but may already be installed"
+fi
 
 # Установка остальных пакетов
 apt install -y unzip curl ufw certbot python3-certbot-nginx || true
@@ -71,8 +79,13 @@ else
     systemctl enable php*-fpm 2>/dev/null || systemctl enable php-fpm 2>/dev/null || true
 fi
 
+# Запускаем MariaDB перед настройкой
+systemctl start mariadb || service mariadb start || true
+sleep 2
+
 # Настройка MariaDB
-mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '$DB_ROOT_PASS'; FLUSH PRIVILEGES;"
+mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '$DB_ROOT_PASS'; FLUSH PRIVILEGES;" 2>/dev/null || \
+mysql -uroot -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '$DB_ROOT_PASS'; FLUSH PRIVILEGES;"
 mysql -uroot -p"$DB_ROOT_PASS" -e "CREATE USER '$DB_USER'@'%' IDENTIFIED BY '$DB_PASS';"
 mysql -uroot -p"$DB_ROOT_PASS" -e "GRANT ALL PRIVILEGES ON *.* TO '$DB_USER'@'%' WITH GRANT OPTION;"
 mysql -uroot -p"$DB_ROOT_PASS" -e "FLUSH PRIVILEGES;"
