@@ -31,6 +31,11 @@ EOF
 
 chmod 600 $CREDS
 
+# Удаление старых репозиториев (dotdeb и других), если они есть
+echo "Cleaning up old repositories..."
+rm -f /etc/apt/sources.list.d/dotdeb.list
+rm -f /etc/apt/sources.list.d/php.list 2>/dev/null || true
+
 # Обновление пакетов (БЕЗ upgrade)
 apt update -y
 
