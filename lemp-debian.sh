@@ -90,50 +90,8 @@ else
     systemctl enable php*-fpm 2>/dev/null || systemctl enable php-fpm 2>/dev/null || true
 fi
 
-# Запускаем MariaDB перед настройкой
-echo "Starting MariaDB service..."
-systemctl start mariadb 2>/dev/null || service mariadb start 2>/dev/null || true
-
-# Ждем пока MySQL/MariaDB запустится
-echo "Waiting for MariaDB to start..."
-for i in {1..10}; do
-    if mysql -e "SELECT 1" >/dev/null 2>&1; then
-        echo "MariaDB is ready"
-        break
-    fi
-    sleep 2
-done
-
-# Настройка MariaDB (пробуем разные варианты подключения)
+# Создаем конфигурацию MariaDB для удаленного доступа
 echo "Configuring MariaDB..."
-MYSQL_CONNECTED=false
-
-if mysql -e "SELECT 1" >/dev/null 2>&1; then
-    echo "Connected to MariaDB as root (no password)"
-    mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '$DB_ROOT_PASS'; FLUSH PRIVILEGES;"
-    MYSQL_CONNECTED=true
-elif mysql -uroot -e "SELECT 1" >/dev/null 2>&1; then
-    echo "Connected to MariaDB as root"
-    mysql -uroot -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '$DB_ROOT_PASS'; FLUSH PRIVILEGES;"
-    MYSQL_CONNECTED=true
-fi
-
-if [ "$MYSQL_CONNECTED" = "true" ]; then
-    echo "Creating database user..."
-    mysql -uroot -p"$DB_ROOT_PASS" -e "CREATE USER IF NOT EXISTS '$DB_USER'@'%' IDENTIFIED BY '$DB_PASS';" 2>/dev/null || \
-    mysql -uroot -p"$DB_ROOT_PASS" -e "CREATE USER '$DB_USER'@'%' IDENTIFIED BY '$DB_PASS';"
-    mysql -uroot -p"$DB_ROOT_PASS" -e "GRANT ALL PRIVILEGES ON *.* TO '$DB_USER'@'%' WITH GRANT OPTION;" 2>/dev/null
-    mysql -uroot -p"$DB_ROOT_PASS" -e "FLUSH PRIVILEGES;" 2>/dev/null
-    echo "MariaDB configured successfully"
-else
-    echo "Warning: Could not connect to MariaDB. It may need manual configuration."
-    echo "Please run manually:"
-    echo "  mysql_secure_installation"
-    echo "  mysql -uroot -p"
-    echo "Then create user: CREATE USER '$DB_USER'@'%' IDENTIFIED BY '$DB_PASS';"
-fi
-
-# Открытый доступ MySQL для ВСЕХ
 mkdir -p /etc/mysql/mariadb.conf.d
 cat > /etc/mysql/mariadb.conf.d/50-server.cnf <<EOF
 [mysqld]
@@ -145,6 +103,57 @@ max_allowed_packet = 16M
 expire_logs_days = 10
 max_binlog_size = 100M
 EOF
+
+# Запускаем MariaDB
+echo "Starting MariaDB service..."
+systemctl start mariadb 2>/dev/null || service mariadb start 2>/dev/null || true
+
+# Ждем пока MySQL/MariaDB запустится (до 30 секунд)
+echo "Waiting for MariaDB to start..."
+MYSQL_READY=false
+for i in {1..15}; do
+    if mysql -e "SELECT 1" >/dev/null 2>&1 || mysql -uroot -e "SELECT 1" >/dev/null 2>&1; then
+        echo "MariaDB is ready"
+        MYSQL_READY=true
+        break
+    fi
+    echo "Waiting... ($i/15)"
+    sleep 2
+done
+
+# Настройка MariaDB (пробуем разные варианты подключения)
+MYSQL_CONNECTED=false
+
+if mysql -e "SELECT 1" >/dev/null 2>&1; then
+    echo "Connected to MariaDB as root (no password)"
+    mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '$DB_ROOT_PASS'; FLUSH PRIVILEGES;" 2>/dev/null || \
+    mysql -e "SET PASSWORD FOR 'root'@'localhost' = PASSWORD('$DB_ROOT_PASS'); FLUSH PRIVILEGES;" 2>/dev/null
+    MYSQL_CONNECTED=true
+elif mysql -uroot -e "SELECT 1" >/dev/null 2>&1; then
+    echo "Connected to MariaDB as root"
+    mysql -uroot -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '$DB_ROOT_PASS'; FLUSH PRIVILEGES;" 2>/dev/null || \
+    mysql -uroot -e "SET PASSWORD FOR 'root'@'localhost' = PASSWORD('$DB_ROOT_PASS'); FLUSH PRIVILEGES;" 2>/dev/null
+    MYSQL_CONNECTED=true
+fi
+
+if [ "$MYSQL_CONNECTED" = "true" ]; then
+    echo "Creating database user..."
+    mysql -uroot -p"$DB_ROOT_PASS" -e "CREATE USER IF NOT EXISTS '$DB_USER'@'%' IDENTIFIED BY '$DB_PASS';" 2>/dev/null || \
+    mysql -uroot -p"$DB_ROOT_PASS" -e "CREATE USER '$DB_USER'@'%' IDENTIFIED BY '$DB_PASS';" 2>/dev/null || true
+    mysql -uroot -p"$DB_ROOT_PASS" -e "GRANT ALL PRIVILEGES ON *.* TO '$DB_USER'@'%' WITH GRANT OPTION;" 2>/dev/null || true
+    mysql -uroot -p"$DB_ROOT_PASS" -e "FLUSH PRIVILEGES;" 2>/dev/null || true
+    echo "MariaDB configured successfully"
+elif [ "$MYSQL_READY" = "false" ]; then
+    echo "ERROR: MariaDB did not start in time. Please check manually:"
+    echo "  systemctl status mariadb"
+    echo "  journalctl -xe"
+else
+    echo "Warning: Could not connect to MariaDB. It may need manual configuration."
+    echo "Please run manually:"
+    echo "  mysql_secure_installation"
+    echo "  mysql -uroot -p"
+    echo "Then create user: CREATE USER '$DB_USER'@'%' IDENTIFIED BY '$DB_PASS';"
+fi
 
 # Настройка NGINX + Brotli
 cat > /etc/nginx/nginx.conf <<'EOF'
