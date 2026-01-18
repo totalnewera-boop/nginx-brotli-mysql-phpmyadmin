@@ -41,31 +41,11 @@ apt install -y nginx nginx-extras mariadb-server \
 php-fpm php-mysql php-cli php-curl php-zip php-mbstring php-xml php-gd \
 unzip curl ufw certbot python3-certbot-nginx openssl
 
-# PHP-FPM - определяем socket и service
-# Сначала определяем имя сервиса через systemctl
-PHP_FPM_SERVICE=$(systemctl list-unit-files 2>/dev/null | grep -o 'php[0-9.]*-fpm\.service' | head -1 | sed 's/\.service$//')
-if [ -z "$PHP_FPM_SERVICE" ]; then
-  # Если не нашли через systemctl, используем fallback
-  PHP_FPM_SERVICE="php8.2-fpm"
-fi
+# PHP-FPM
+PHP_FPM_SOCK=$(ls /run/php/php*-fpm.sock | head -1)
+PHP_FPM_SERVICE=$(basename "$PHP_FPM_SOCK" | sed 's/.sock//')
 
-# Определяем socket файл
-PHP_FPM_SOCK=$(ls /run/php/php*-fpm.sock 2>/dev/null | head -1)
-if [ -z "$PHP_FPM_SOCK" ]; then
-  # Если socket не найден, ищем альтернативные пути
-  PHP_FPM_SOCK=$(ls /var/run/php/php*-fpm.sock 2>/dev/null | head -1)
-fi
-if [ -z "$PHP_FPM_SOCK" ]; then
-  # Если socket все еще не найден, используем стандартный путь на основе имени сервиса
-  PHP_FPM_SOCK="/run/php/${PHP_FPM_SERVICE}.sock"
-fi
-
-systemctl enable nginx mariadb
-if systemctl list-unit-files | grep -q "^${PHP_FPM_SERVICE}.service"; then
-  systemctl enable "$PHP_FPM_SERVICE"
-else
-  echo "Warning: PHP-FPM service '$PHP_FPM_SERVICE' not found, trying to start it anyway"
-fi
+systemctl enable nginx mariadb "$PHP_FPM_SERVICE"
 systemctl start mariadb
 
 # Ждём MariaDB
@@ -165,21 +145,8 @@ EOF
 cat > /etc/nginx/sites-available/default <<EOF
 server {
     listen 80 default_server;
-    listen [::]:80 default_server;
-    server_name _;
     root /var/www/html;
-    index index.php index.html index.htm;
-
-    location = /favicon.ico {
-        log_not_found off;
-        access_log off;
-    }
-
-    location = /robots.txt {
-        allow all;
-        log_not_found off;
-        access_log off;
-    }
+    index index.php index.html;
 
     location / {
         try_files \$uri \$uri/ /index.php?\$query_string;
@@ -189,19 +156,7 @@ server {
         include fastcgi_params;
         fastcgi_pass unix:$PHP_FPM_SOCK;
         fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
-        fastcgi_intercept_errors on;
-        fastcgi_index index.php;
-        try_files \$uri =404;
     }
-
-    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)\$ {
-        expires max;
-        log_not_found off;
-        access_log off;
-    }
-
-    access_log /var/log/nginx/default-access.log;
-    error_log /var/log/nginx/default-error.log;
 }
 EOF
 
