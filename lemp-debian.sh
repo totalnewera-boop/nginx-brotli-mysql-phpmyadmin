@@ -55,7 +55,12 @@ else
   PHP_FPM_SERVICE=$(basename "$PHP_FPM_SOCK" .sock)
 fi
 
-systemctl enable nginx mariadb "$PHP_FPM_SERVICE"
+systemctl enable nginx mariadb
+if systemctl list-unit-files | grep -q "^${PHP_FPM_SERVICE}.service"; then
+  systemctl enable "$PHP_FPM_SERVICE"
+else
+  echo "Warning: PHP-FPM service '$PHP_FPM_SERVICE' not found, trying to start it anyway"
+fi
 systemctl start mariadb
 
 # Ждём MariaDB
