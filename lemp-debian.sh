@@ -42,17 +42,22 @@ php-fpm php-mysql php-cli php-curl php-zip php-mbstring php-xml php-gd \
 unzip curl ufw certbot python3-certbot-nginx openssl
 
 # PHP-FPM - определяем socket и service
+# Сначала определяем имя сервиса через systemctl
+PHP_FPM_SERVICE=$(systemctl list-unit-files 2>/dev/null | grep -o 'php[0-9.]*-fpm\.service' | head -1 | sed 's/\.service$//')
+if [ -z "$PHP_FPM_SERVICE" ]; then
+  # Если не нашли через systemctl, используем fallback
+  PHP_FPM_SERVICE="php8.2-fpm"
+fi
+
+# Определяем socket файл
 PHP_FPM_SOCK=$(ls /run/php/php*-fpm.sock 2>/dev/null | head -1)
 if [ -z "$PHP_FPM_SOCK" ]; then
   # Если socket не найден, ищем альтернативные пути
   PHP_FPM_SOCK=$(ls /var/run/php/php*-fpm.sock 2>/dev/null | head -1)
 fi
 if [ -z "$PHP_FPM_SOCK" ]; then
-  # Если socket не найден, ищем сервис через systemctl
-  PHP_FPM_SERVICE=$(systemctl list-unit-files | grep -o 'php[0-9.]*-fpm\.service' | head -1 | sed 's/\.service$//' || echo "php8.2-fpm")
-else
-  # Имя сервиса = имя socket файла без .sock
-  PHP_FPM_SERVICE=$(basename "$PHP_FPM_SOCK" .sock)
+  # Если socket все еще не найден, используем стандартный путь на основе имени сервиса
+  PHP_FPM_SOCK="/run/php/${PHP_FPM_SERVICE}.sock"
 fi
 
 systemctl enable nginx mariadb
