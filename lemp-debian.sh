@@ -48,10 +48,12 @@ if [ -z "$PHP_FPM_SOCK" ]; then
   PHP_FPM_SOCK=$(ls /var/run/php/php*-fpm.sock 2>/dev/null | head -1)
 fi
 if [ -z "$PHP_FPM_SOCK" ]; then
-  # Используем стандартный путь
-  PHP_FPM_SOCK="/run/php/php-fpm.sock"
+  # Если socket не найден, ищем сервис через systemctl
+  PHP_FPM_SERVICE=$(systemctl list-unit-files | grep -o 'php[0-9.]*-fpm\.service' | head -1 | sed 's/\.service$//' || echo "php8.2-fpm")
+else
+  # Имя сервиса = имя socket файла без .sock
+  PHP_FPM_SERVICE=$(basename "$PHP_FPM_SOCK" .sock)
 fi
-PHP_FPM_SERVICE=$(basename "$PHP_FPM_SOCK" | sed 's/.sock//' | sed 's/php/php-fpm/')
 
 systemctl enable nginx mariadb "$PHP_FPM_SERVICE"
 systemctl start mariadb
