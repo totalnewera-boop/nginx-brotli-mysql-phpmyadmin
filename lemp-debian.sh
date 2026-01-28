@@ -200,6 +200,14 @@ ports=80,443/tcp
 EOF
 
 ufw app update nginx
+ufw app list
+
+# Открываем нужные порты ДО включения фаервола
+ufw allow OpenSSH
+ufw allow 'Nginx Full'
+ufw allow 3306/tcp   # если нужен удалённый доступ к БД
+
+# Включаем UFW
 ufw --force enable
 
 echo "Установка PHP, MariaDB и расширений..."
