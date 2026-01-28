@@ -1,208 +1,283 @@
 #!/bin/bash
 set -e
 
-LOG="/root/lemp-install.log"
-CREDS="/root/lemp-credentials.txt"
-
-exec > >(tee -a $LOG) 2>&1
-
 if [ "$(id -u)" != "0" ]; then
-  echo "Run as root"
+  echo "Этот скрипт нужно запускать от root."
   exit 1
 fi
 
-echo "=== LEMP AUTO INSTALLER (DEBIAN 12) ==="
+echo "=== NGINX + Brotli + PHP + MariaDB + phpMyAdmin (Debian 12) ==="
 date
 
-# Генерация паролей
-DB_ROOT_PASS=$(openssl rand -base64 18)
-DB_USER="lempuser"
-DB_PASS=$(openssl rand -base64 18)
+echo "Настройка SSH keepalive..."
+sed -i 's/^#\?ClientAliveInterval.*/ClientAliveInterval 60/; t; $a ClientAliveInterval 60' /etc/ssh/sshd_config
+sed -i 's/^#\?ClientAliveCountMax.*/ClientAliveCountMax 9999/; t; $a ClientAliveCountMax 9999' /etc/ssh/sshd_config
+systemctl restart sshd
 
-cat > $CREDS <<EOF
-MariaDB ROOT Password: $DB_ROOT_PASS
-Database User: $DB_USER
-Database Password: $DB_PASS
+echo "Обновление пакетов..."
+apt update -y
+
+echo "Установка зависимостей для сборки Nginx с Brotli..."
+apt install -y libbrotli-dev dpkg-dev build-essential gnupg2 git gcc cmake \
+  libpcre3 libpcre3-dev zlib1g zlib1g-dev openssl libssl-dev curl unzip
+
+echo "Добавление официального репозитория Nginx..."
+curl -fsSL https://nginx.org/keys/nginx_signing.key | gpg --dearmor > /usr/share/keyrings/nginx-archive-keyring.gpg
+
+cat > /etc/apt/sources.list.d/nginx.list <<'EOF'
+deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg arch=amd64] http://nginx.org/packages/debian/ bookworm nginx
+deb-src [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg arch=amd64] http://nginx.org/packages/debian/ bookworm nginx
 EOF
-
-chmod 600 $CREDS
-
-echo ""
-echo "==============================="
-echo " MariaDB ROOT PASSWORD:"
-echo " $DB_ROOT_PASS"
-echo "==============================="
-echo ""
 
 apt update -y
 
-# Установка пакетов
-apt install -y nginx nginx-extras mariadb-server \
-php-fpm php-mysql php-cli php-curl php-zip php-mbstring php-xml php-gd \
-unzip curl ufw certbot python3-certbot-nginx openssl
+echo "Подготовка исходников Nginx и модуля Brotli..."
+apt install -y build-essential devscripts dpkg-dev git curl
 
-# PHP-FPM
-PHP_FPM_SOCK=$(ls /run/php/php*-fpm.sock | head -1)
-PHP_FPM_SERVICE=$(basename "$PHP_FPM_SOCK" | sed 's/.sock//')
+cd /usr/local/src
+apt source nginx
+apt build-dep nginx -y
 
-systemctl enable nginx mariadb "$PHP_FPM_SERVICE"
-systemctl start mariadb
+git clone --recursive https://github.com/google/ngx_brotli.git
 
-# Ждём MariaDB
-echo "Waiting for MariaDB to start..."
-for i in {1..20}; do
-  if mysql -e "SELECT 1" >/dev/null 2>&1 || mysql -uroot -e "SELECT 1" >/dev/null 2>&1; then
-    echo "MariaDB is ready"
-    break
-  fi
-  sleep 2
-done
+cd /usr/local/src/nginx-*/
 
-# Переключаем root на пароль (пробуем разные способы подключения)
-echo "Configuring MariaDB root password..."
-if mysql -e "SELECT 1" >/dev/null 2>&1; then
-  # Подключение без пароля работает
-  mysql <<EOF
-ALTER USER 'root'@'localhost'
-IDENTIFIED WITH mysql_native_password
-BY '$DB_ROOT_PASS';
-FLUSH PRIVILEGES;
-EOF
-elif mysql -uroot -e "SELECT 1" >/dev/null 2>&1; then
-  # Подключение с -uroot работает
-  mysql -uroot <<EOF
-ALTER USER 'root'@'localhost'
-IDENTIFIED WITH mysql_native_password
-BY '$DB_ROOT_PASS';
-FLUSH PRIVILEGES;
-EOF
-else
-  # Пароль уже установлен или нужна другая аутентификация
-  echo "Warning: MariaDB root already has a password or needs manual configuration"
-  echo "Root password was set to: $DB_ROOT_PASS"
-  echo "You may need to set it manually with: mysql_secure_installation"
-fi
+echo "Включение модуля ngx_brotli в сборку Nginx..."
+sed -i 's|CFLAGS="" ./configure|CFLAGS="" ./configure --add-module=/usr/local/src/ngx_brotli|g' debian/rules
 
-# Создаём пользователя (пробуем с новым паролем)
-echo "Creating database user..."
-if mysql -uroot -p"$DB_ROOT_PASS" -e "SELECT 1" >/dev/null 2>&1; then
-  mysql -uroot -p"$DB_ROOT_PASS" <<EOF
-CREATE USER IF NOT EXISTS '$DB_USER'@'%' IDENTIFIED BY '$DB_PASS';
-GRANT ALL PRIVILEGES ON *.* TO '$DB_USER'@'%' WITH GRANT OPTION;
-FLUSH PRIVILEGES;
-EOF
-  echo "Database user created successfully"
-else
-  echo "Warning: Could not create database user. You may need to do it manually:"
-  echo "mysql -uroot -p"
-  echo "CREATE USER '$DB_USER'@'%' IDENTIFIED BY '$DB_PASS';"
-  echo "GRANT ALL PRIVILEGES ON *.* TO '$DB_USER'@'%' WITH GRANT OPTION;"
-fi
+echo "Сборка deb-пакетов Nginx..."
+dpkg-buildpackage -b -uc -us
 
-# Открытый MySQL
-cat > /etc/mysql/mariadb.conf.d/50-server.cnf <<EOF
-[mysqld]
-bind-address = 0.0.0.0
-character-set-server = utf8mb4
-collation-server = utf8mb4_unicode_ci
-max_connections = 200
-EOF
+echo "Установка собранных пакетов Nginx..."
+dpkg -i /usr/local/src/*.deb
 
-systemctl restart mariadb
-
-# Brotli (если есть)
-BROTLI=$(ls /usr/lib/nginx/modules | grep brotli || true)
-
-# NGINX
-cat > /etc/nginx/nginx.conf <<EOF
+echo "Конфигурация Nginx с Brotli и Gzip..."
+cat > /etc/nginx/nginx.conf <<'EOF'
 user www-data;
 worker_processes auto;
-pid /run/nginx.pid;
+pid /var/run/nginx.pid;
 
-${BROTLI:+load_module modules/ngx_http_brotli_filter_module.so;}
-${BROTLI:+load_module modules/ngx_http_brotli_static_module.so;}
-
-events { worker_connections 2048; }
+events {
+    worker_connections 1024;
+}
 
 http {
+
+    ##
+    # Basic settings
+    ##
+
+    sendfile on;
+    tcp_nopush on;
+    tcp_nodelay on;
+    types_hash_max_size 2048;
+    server_tokens off;
+    ignore_invalid_headers on;
+
+    keepalive_timeout 40s;
+    send_timeout 20s;
+    client_header_timeout 20s;
+    client_body_timeout 20s;
+    reset_timedout_connection on;
+
+    server_names_hash_bucket_size 64;
+
+    # Upload limits
+    client_max_body_size 100m;
+    client_body_buffer_size 128k;
+
+    ##
+    # MIME
+    ##
+
     include /etc/nginx/mime.types;
     default_type application/octet-stream;
 
-    sendfile on;
-    keepalive_timeout 65;
+    ##
+    # Logging
+    ##
+
+    log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                    '$status $body_bytes_sent "$http_referer" '
+                    '"$http_user_agent" "$gzip_ratio"';
+
+    access_log /var/log/nginx/access.log main;
+    error_log /var/log/nginx/error.log warn;
+
+    ##
+    # Limits
+    ##
+
+    limit_req_zone $binary_remote_addr zone=dos_attack:20m rate=30r/m;
+
+    ##
+    # Gzip
+    ##
 
     gzip on;
-    ${BROTLI:+brotli on;}
-    ${BROTLI:+brotli_comp_level 6;}
-    ${BROTLI:+brotli_types text/plain text/css application/javascript application/json image/svg+xml;}
+    gzip_disable "msie6";
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_comp_level 5;
+    gzip_min_length 1000;
+    gzip_buffers 16 8k;
+    gzip_http_version 1.1;
+    gzip_types
+        text/plain
+        text/css
+        application/json
+        application/javascript
+        application/xml
+        application/rss+xml
+        image/svg+xml
+        font/ttf
+        font/otf
+        application/font-woff2;
 
-    include /etc/nginx/conf.d/*.conf;
+    gzip_static on;
+
+    ##
+    # Brotli
+    ##
+
+    brotli on;
+    brotli_comp_level 6;
+    brotli_types
+        text/plain
+        text/css
+        application/json
+        application/javascript
+        application/xml
+        application/rss+xml
+        image/svg+xml
+        font/ttf
+        font/otf
+        application/font-woff2;
+
+    brotli_static on;
+
+    ##
+    # Include virtual hosts
+    ##
+
     include /etc/nginx/sites-enabled/*;
+    include /etc/nginx/conf.d/*.conf;
+    include /usr/share/nginx/modules/*.conf;
 }
 EOF
 
-# Сайт
-cat > /etc/nginx/sites-available/default <<EOF
-server {
-    listen 80 default_server;
-    root /var/www/html;
-    index index.php index.html;
+mkdir -p /etc/nginx/sites-available/
+mkdir -p /etc/nginx/sites-enabled/
 
-    location / {
-        try_files \$uri \$uri/ /index.php?\$query_string;
-    }
+nginx -t
+systemctl start nginx
+systemctl status nginx --no-pager || true
 
-    location ~ \.php\$ {
-        include fastcgi_params;
-        fastcgi_pass unix:$PHP_FPM_SOCK;
-        fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
-    }
-}
+echo "Добавление override для плавного старта nginx..."
+mkdir -p /etc/systemd/system/nginx.service.d
+printf "[Service]\nExecStartPost=/bin/sleep 0.1\n" > /etc/systemd/system/nginx.service.d/override.conf
+systemctl daemon-reload
+systemctl restart nginx
+
+echo "Установка и настройка UFW..."
+apt install -y ufw
+
+cat > /etc/ufw/applications.d/nginx <<'EOF'
+[Nginx HTTP]
+title=Web Server
+description=Enable NGINX HTTP traffic
+ports=80/tcp
+
+[Nginx HTTPS]
+title=Web Server (HTTPS)
+description=Enable NGINX HTTPS traffic
+ports=443/tcp
+
+[Nginx Full]
+title=Web Server (HTTP and HTTPS)
+description=Enable NGINX HTTP and HTTPS traffic
+ports=80,443/tcp
 EOF
 
-# PHP info
-mkdir -p /var/www/html
-cat > /var/www/html/info.php <<EOF
-<?php phpinfo(); ?>
-EOF
-
-# phpMyAdmin
-export DEBIAN_FRONTEND=noninteractive
-echo "phpmyadmin phpmyadmin/dbconfig-install boolean true" | debconf-set-selections
-echo "phpmyadmin phpmyadmin/mysql/admin-pass password $DB_ROOT_PASS" | debconf-set-selections
-echo "phpmyadmin phpmyadmin/mysql/app-pass password $DB_ROOT_PASS" | debconf-set-selections
-echo "phpmyadmin phpmyadmin/reconfigure-webserver multiselect none" | debconf-set-selections
-
-apt install -y phpmyadmin
-ln -sf /usr/share/phpmyadmin /var/www/html/phpmyadmin
-
-# Firewall
-ufw allow OpenSSH
-ufw allow 80
-ufw allow 443
-ufw allow 3306
+ufw app update nginx
 ufw --force enable
 
-# Перезапуск
-systemctl restart "$PHP_FPM_SERVICE"
-systemctl restart nginx
+echo "Установка PHP, MariaDB и расширений..."
+apt update -y
+apt install -y \
+  php-fpm php-mysql php-cli php-curl php-zip php-gd php-xml php-mbstring \
+  mariadb-server php-imap php-bz2 php-intl php-gmp
+
+apt install -y mariadb-server mariadb-client
+systemctl enable mariadb
+systemctl start mariadb
+
+DB_ADMIN_PASS=$(openssl rand -base64 18)
+echo "Admin DB password: $DB_ADMIN_PASS"
+
+echo "Создание пользователя admin в MariaDB..."
+mysql -e "CREATE USER IF NOT EXISTS 'admin'@'localhost' IDENTIFIED BY '${DB_ADMIN_PASS}';
+GRANT ALL PRIVILEGES ON *.* TO 'admin'@'localhost' WITH GRANT OPTION;
+FLUSH PRIVILEGES;"
+
+echo "Разрешение удалённых подключений к MariaDB..."
+sed -i 's/^\s*bind-address\s*=.*/bind-address = 0.0.0.0/' /etc/mysql/mariadb.conf.d/50-server.cnf
+systemctl restart mariadb
+
+echo "Установка phpMyAdmin..."
+export DEBIAN_FRONTEND=noninteractive
+apt install -y phpmyadmin
+
+echo "Создание snippet fastcgi-php.conf..."
+mkdir -p /etc/nginx/snippets
+cat > /etc/nginx/snippets/fastcgi-php.conf <<'EOF'
+include fastcgi_params;
+fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+fastcgi_index index.php;
+EOF
+
+echo "Создание vhost для phpMyAdmin..."
+cat > /etc/nginx/sites-available/phpmyadmin.conf <<'EOF'
+server {
+    listen 80;
+    server_name _;
+
+    root /usr/share/phpmyadmin;
+    index index.php index.html;
+
+    location /phpmyadmin {
+        alias /usr/share/phpmyadmin/;
+        index index.php;
+    }
+
+    location ~ ^/phpmyadmin/(.+\.php)$ {
+        alias /usr/share/phpmyadmin/$1;
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/run/php/php8.2-fpm.sock;
+        fastcgi_param SCRIPT_FILENAME $request_filename;
+    }
+
+    location ~* ^/phpmyadmin/(.+\.(jpg|jpeg|gif|css|png|js|ico|html|xml|txt))$ {
+        alias /usr/share/phpmyadmin/$1;
+    }
+}
+EOF
+
+ln -sf /etc/nginx/sites-available/phpmyadmin.conf /etc/nginx/sites-enabled/phpmyadmin.conf
+nginx -t
+systemctl reload nginx
+
+echo "Установка certbot..."
+apt install -y certbot python3-certbot-nginx
 
 IP=$(hostname -I | awk '{print $1}')
 
-cat >> $CREDS <<EOF
-
-phpMyAdmin: http://$IP/phpmyadmin
-Login: root
-Password: $DB_ROOT_PASS
-EOF
-
-echo ""
+echo
 echo "===================================="
-echo " INSTALL COMPLETED SUCCESSFULLY"
+echo " УСТАНОВКА ЗАВЕРШЕНА"
 echo "===================================="
-echo "ROOT DB PASSWORD:"
-echo " $DB_ROOT_PASS"
-echo ""
-echo "Credentials file: $CREDS"
 echo "phpMyAdmin: http://$IP/phpmyadmin"
+echo "DB admin user: admin"
+echo "DB admin password: $DB_ADMIN_PASS"
 echo "===================================="
+
