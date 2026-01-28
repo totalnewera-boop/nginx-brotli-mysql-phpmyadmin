@@ -9,11 +9,17 @@ fi
 echo "=== УСТАНОВКА НОВОГО САЙТА ==="
 echo
 
-# Запрос домена
-read -p "Введите домен (например: fitness-journey.bond): " DOMAIN
+# Получаем домен из аргумента или запрашиваем
+if [ -n "$1" ]; then
+  DOMAIN="$1"
+else
+  read -p "Введите домен (например: fitness-journey.bond): " DOMAIN
+fi
 
 if [ -z "$DOMAIN" ]; then
   echo "Ошибка: домен не может быть пустым"
+  echo "Использование: $0 <домен>"
+  echo "Пример: $0 fitness-journey.bond"
   exit 1
 fi
 
