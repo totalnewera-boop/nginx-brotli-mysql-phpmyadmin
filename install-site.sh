@@ -13,7 +13,7 @@ echo
 if [ -n "$1" ]; then
   DOMAIN="$1"
 else
-  read -p "Введите домен (например: fitness-journey.bond): " DOMAIN
+  read -p "Введите домен (например: example.com): " DOMAIN
 fi
 
 if [ -z "$DOMAIN" ]; then

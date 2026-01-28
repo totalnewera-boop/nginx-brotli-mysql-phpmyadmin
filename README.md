@@ -86,7 +86,7 @@ DB admin password: СГЕНЕРИРОВАННЫЙ_ПАРОЛЬ
 Выполните на сервере с правами root (с указанием домена):
 
 ```bash
-wget --no-cache -qO- https://raw.githubusercontent.com/totalnewera-boop/nginx-brotli-mysql-phpmyadmin/main/install-site.sh | bash -s fitness-journey.bond
+wget --no-cache -qO- https://raw.githubusercontent.com/totalnewera-boop/nginx-brotli-mysql-phpmyadmin/main/install-site.sh | bash -s example.com
 ```
 
 Или скачайте и запустите вручную:
@@ -94,18 +94,18 @@ wget --no-cache -qO- https://raw.githubusercontent.com/totalnewera-boop/nginx-br
 ```bash
 wget https://raw.githubusercontent.com/totalnewera-boop/nginx-brotli-mysql-phpmyadmin/main/install-site.sh
 chmod +x install-site.sh
-./install-site.sh fitness-journey.bond
+./install-site.sh example.com
 ```
 
 Если домен не указан, скрипт запросит его интерактивно:
 
 ```bash
 ./install-site.sh
-Введите домен (например: fitness-journey.bond): fitness-journey.bond
+Введите домен (например: example.com): example.com
 ```
 
 Скрипт автоматически:
-- Создаст директорию `/var/www/fitness-journey.bond/public`
+- Создаст директорию `/var/www/example.com/public`
 - Настроит права доступа
 - Создаст тестовый `index.php`
 - Настроит Nginx виртуальный хост
@@ -113,8 +113,8 @@ chmod +x install-site.sh
 - Настроит автоматическое обновление сертификата
 
 После установки сайт будет доступен по адресам:
-- `https://fitness-journey.bond`
-- `https://www.fitness-journey.bond`
+- `https://example.com`
+- `https://www.example.com`
 
 ## 📁 Структура проекта
 
