@@ -89,16 +89,6 @@ certbot --nginx \
   --redirect \
   --non-interactive
 
-# Проверка статуса certbot
-echo
-echo "Проверка статуса certbot..."
-systemctl status certbot.timer --no-pager || true
-
-# Тестовый запуск обновления сертификата
-echo
-echo "Тестовый запуск обновления сертификата (dry-run)..."
-certbot renew --dry-run
-
 echo
 echo "===================================="
 echo " УСТАНОВКА САЙТА ЗАВЕРШЕНА"
